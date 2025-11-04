@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="page-title">...</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden; 
+            background-color: #100f1c; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: none;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+        }
+        #fate-canvas {
+            position: fixed; 
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 1; 
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="fate-canvas"></canvas>
+
+    <script>
+        let dayString = "0";
+        let countdownText = "";
+        let isSpecialDay = false;
+
+        const canvas = document.getElementById('fate-canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        let canvasWidth = canvas.width = window.innerWidth;
+        let canvasHeight = canvas.height = window.innerHeight;
+
+        let numberFontSize, textX, textY;
+        let frameCount = 0;
+        
+        let particlesArray = []; 
+        let trailParticlesArray = []; 
+        let dustParticlesArray = []; 
+        
+        const mouse = { x: null, y: null, radius: 80, force: 3 };
+
+        const CONFIG = {
+            DUST_PARTICLE_COUNT: 300, 
+            NUMBER_PARTICLE_SAMPLING: 4, 
+            FONT_STACK: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif"
+        };
+        
+        let resizeTimer; 
+        
+        (function updateDates() {
+            try {
+                const startDateString = '2025-10-19';
+                const startDate = new Date(startDateString);
+                
+                const specialDateString = '2026-02-20';
+                const specialDate = new Date(specialDateString);
+
+                const today = new Date();
+                
+                const startMidnight = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+                const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                const specialDateMidnight = new Date(specialDate.getFullYear(), specialDate.getMonth(), specialDate.getDate());
+
+                const diffMillisecondsAnniversary = todayMidnight.getTime() - startMidnight.getTime();
+                const diffDaysAnniversary = diffMillisecondsAnniversary / (1000 * 60 * 60 * 24);
+                const totalDays = Math.floor(diffDaysAnniversary) + 1; 
+                dayString = totalDays >= 0 ? totalDays.toString() : "0";
+                
+                const diffMillisecondsSpecial = specialDateMidnight.getTime() - todayMidnight.getTime();
+                const diffDaysSpecial = Math.ceil(diffMillisecondsSpecial / (1000 * 60 * 60 * 24)); 
+
+                if (diffDaysSpecial === 0) {
+                    isSpecialDay = true; 
+                    countdownText = "就是今天"; 
+                } else if (diffDaysSpecial > 0) {
+                    countdownText = `距离 2026.02.20 还有 ${diffDaysSpecial} 天`;
+                } else {
+                    countdownText = `2026.02.20 已过去 ${Math.abs(diffDaysSpecial)} 天`;
+                }
+                
+                document.getElementById('page-title').textContent = `今天是第${dayString}天`;
+
+            } catch (error) {
+                dayString = "Error";
+                document.getElementById('page-title').textContent = "日期错误";
+            }
+        })();
+
+        class Particle {
+            constructor(targetX, targetY) {
+                this.targetX = targetX;
+                this.targetY = targetY;
+                
+                this.x = Math.random() * canvasWidth;
+                this.y = Math.random() * canvasHeight;
+                
+                this.easeFactor = 0.04 + Math.random() * 0.02; 
+                
+                if (isSpecialDay) {
+                    // --- 修正点 1: 设置一个静态的粉色 ---
+                    // 每个粒子是一个固定的粉色/玫瑰色，但不再有动画
+                    this.hue = 330 + Math.random() * 30; // 330 (粉红) 到 360 (红/紫红)
+                    this.size = Math.random() * 2 + 1; 
+                    this.color = `hsla(${this.hue}, 100%, 85%, 0.8)`;
+                    // 删除了 hueChangeDir 和 hueSpeed
+                } else {
+                    this.size = Math.random() * 1.5 + 0.5; 
+                    this.color = `rgba(210, 225, 255, 0.7)`; 
+                }
+            }
+            
+            update() {
+                // --- 修正点 2: 删除了彩蛋日改变颜色的代码块 ---
+                /*
+                if (isSpecialDay) {
+                    // (这整块代码都删了)
+                }
+                */
+                
+                let isRepelled = false;
+                if (mouse.x) {
+                    let dxMouse = this.x - mouse.x;
+                    let dyMouse = this.y - mouse.y;
+                    let distMouse = Math.sqrt(dxMouse * dxMouse + dyMouse * dyMouse);
+                    
+                    if (distMouse < mouse.radius) {
+                        isRepelled = true;
+                        let force = (mouse.radius - distMouse) / mouse.radius;
+                        let moveX = (dxMouse / distMouse) * force * mouse.force;
+                        let moveY = (dyMouse / distMouse) * force * mouse.force;
+                        this.x += moveX;
+                        this.y += moveY;
+                    }
+                }
+
+                if (!isRepelled) {
+                    this.x += (this.targetX - this.x) * this.easeFactor;
+                    this.y += (this.targetY - this.y) * this.easeFactor;
+                }
+            }
+            
+            draw() {
+                ctx.fillStyle = this.color;
+                
+                if (isSpecialDay) {
+                    ctx.shadowColor = this.color;
+                    ctx.shadowBlur = 8;
+                }
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.shadowBlur = 0;
+            }
+        }
+        
+        class TrailParticle {
+            constructor(x, y) {
+                this.x = x + (Math.random() - 0.5) * 10;
+                this.y = y + (Math.random() - 0.5) * 10;
+                this.life = 1;
+                this.lifeDrain = 0.02 + Math.random() * 0.03;
+
+                if (isSpecialDay) {
+                    // 鼠标拖尾粒子仍然是粉色系 (这个没变)
+                    this.hue = 330 + Math.random() * 30;
+                    this.size = Math.random() * 3 + 2;
+                    this.color = `hsla(${this.hue}, 100%, 80%, 1)`;
+                } else {
+                    this.size = Math.random() * 2 + 1;
+                    this.color = `rgba(100, 180, 255, 1)`; 
+                }
+            }
+            update() { this.life -= this.lifeDrain; this.size *= 0.98; }
+            draw() {
+                ctx.globalAlpha = Math.max(0, this.life); 
+                ctx.fillStyle = this.color;
+                
+                if (isSpecialDay) {
+                    ctx.shadowColor = this.color;
+                    ctx.shadowBlur = 10;
+                }
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        class DustParticle {
+            constructor() {
+                this.x = Math.random() * canvasWidth;
+                this.y = Math.random() * canvasHeight;
+                this.speedX = 0;
+                this.speedY = 0.1 + Math.random() * 0.2;
+                this.size = Math.random() * 1.5 + 0.5;
+                this.opacity = 0.1 + Math.random() * 0.3; 
+                this.color = `rgba(180, 200, 225, ${this.opacity})`;
+            }
+            update() {
+                this.y += this.speedY;
+                if (this.y > canvasHeight) {
+                    this.y = 0;
+                    this.x = Math.random() * canvasWidth;
+                }
+            }
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, this.size, this.size);
+            }
+        }
+
+        function updateTextParticles() {
+            particlesArray = []; 
+            ctx.fillStyle = 'white'; 
+            
+            numberFontSize = Math.min(canvasWidth, canvasHeight) * 0.5; 
+            ctx.font = `bold ${numberFontSize}px ${CONFIG.FONT_STACK}`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            textX = canvasWidth / 2;
+            textY = canvasHeight / 2;
+            
+            const metrics = ctx.measureText(dayString);
+            const textWidth = Math.ceil(metrics.width);
+            const textHeight = numberFontSize; 
+            
+            const scanX = textX - textWidth / 2;
+            const scanY = textY - textHeight / 2;
+
+            ctx.fillText(dayString, textX, textY);
+            
+            const imageData = ctx.getImageData(scanX, scanY, textWidth, textHeight);
+            
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight); 
+
+            const samplingDensity = CONFIG.NUMBER_PARTICLE_SAMPLING;
+            
+            for (let y = 0; y < imageData.height; y += samplingDensity) {
+                for (let x = 0; x < imageData.width; x += samplingDensity) {
+                    const alphaIndex = (y * imageData.width + x) * 4 + 3;
+                    if (imageData.data[alphaIndex] > 128) {
+                        particlesArray.push(new Particle(x + scanX, y + scanY));
+                    }
+                }
+            }
+        }
+
+        function init() {
+            canvasWidth = canvas.width = window.innerWidth;
+            canvasHeight = canvas.height = window.innerHeight;
+
+            dustParticlesArray = []; 
+            trailParticlesArray = [];
+
+            for (let i = 0; i < CONFIG.DUST_PARTICLE_COUNT; i++) {
+                dustParticlesArray.push(new DustParticle());
+            }
+
+            updateTextParticles();
+        }
+
+        function animate() {
+            frameCount++;
+
+            ctx.fillStyle = '#100f1c'; 
+            ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+            
+            for (let i = 0; i < dustParticlesArray.length; i++) {
+                dustParticlesArray[i].update();
+                dustParticlesArray[i].draw();
+            }
+
+            for (let i = trailParticlesArray.length - 1; i >= 0; i--) {
+                trailParticlesArray[i].update();
+                trailParticlesArray[i].draw();
+                if (trailParticlesArray[i].life <= 0) {
+                    trailParticlesArray.splice(i, 1);
+                }
+            }
+            
+            for (let i = 0; i < particlesArray.length; i++) {
+                particlesArray[i].update();
+                particlesArray[i].draw();
+            }
+            
+            if (frameCount > 200) {
+                let textOpacity = Math.min(1, (frameCount - 200) / 100);
+                
+                const subtitle1 = `今天是第 ${dayString} 天`;
+                const subtitle2 = countdownText;
+                
+                const subtitleY = textY + (numberFontSize * 0.5) + 60; 
+                ctx.textAlign = 'center';
+                
+                if (isSpecialDay) {
+                    let glow = 10 + Math.sin(frameCount * 0.05) * 5; 
+                    ctx.shadowBlur = glow; 
+
+                    ctx.font = `bold 24px ${CONFIG.FONT_STACK}`; 
+                    ctx.fillStyle = `rgba(255, 215, 230, ${textOpacity * 0.9})`; 
+                    ctx.shadowColor = `rgba(255, 180, 210, ${textOpacity * 0.7})`;
+                    
+                    ctx.fillText(subtitle2, textX, subtitleY); // 显示 "就是今天"
+
+                } else {
+                    ctx.shadowBlur = 10;
+                    ctx.font = `24px ${CONFIG.FONT_STACK}`;
+                    ctx.fillStyle = `rgba(210, 225, 255, ${textOpacity * 0.7})`;
+                    ctx.shadowColor = `rgba(100, 150, 255, ${textOpacity * 0.5})`;
+                    ctx.fillText(subtitle1, textX, subtitleY);
+                    
+                    ctx.font = `18px ${CONFIG.FONT_STACK}`;
+                    ctx.fillStyle = `rgba(210, 225, 255, ${textOpacity * 0.6})`;
+                    ctx.fillText(subtitle2, textX, subtitleY + 35);
+                }
+                
+                ctx.shadowBlur = 0; 
+            }
+            
+            requestAnimationFrame(animate);
+        }
+
+        canvas.addEventListener('mousemove', (event) => {
+            mouse.x = event.x;
+            mouse.y = event.y;
+            if (trailParticlesArray.length < 150) {
+                 for (let i = 0; i < 2; i++) {
+                    trailParticlesArray.push(new TrailParticle(mouse.x, mouse.y));
+                }
+            }
+        });
+        canvas.addEventListener('mouseleave', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(init, 200); 
+        });
+
+        init();
+        animate();
+
+    </script>
+</body>
+</html>
